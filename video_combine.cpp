@@ -578,6 +578,9 @@ int videocombine(GlobalContext* video_ctx)
 			{
 				stream_index = packet.stream_index;
 				mediatype = ifmt_ctx[i]->streams[stream_index]->codec->codec_type;
+                if (mediatype == AVMEDIA_TYPE_AUDIO) {
+                    int index = 0;
+                }
 				if (mediatype == AVMEDIA_TYPE_VIDEO || mediatype == AVMEDIA_TYPE_AUDIO)
 				{
 					frame[i] = av_frame_alloc();
@@ -598,6 +601,11 @@ int videocombine(GlobalContext* video_ctx)
 						goto end;
 					}
 					if (got_frame) {
+                        av_log(NULL, AV_LOG_ERROR, "add frame stream_index:%d, movie:%d, w:%d, h:%d\n", 
+                            stream_index, 
+                            i, 
+                            frame[i]->width, 
+                            frame[i]->height);
 						frame[i]->pts = av_frame_get_best_effort_timestamp(frame[i]);
 						ret = av_buffersrc_add_frame(filter_ctx[stream_index].buffersrc_ctx[i], frame[i]);
 						if (ret < 0) {
@@ -629,7 +637,21 @@ int videocombine(GlobalContext* video_ctx)
 			if (ret < 0)
 				goto end;
 
-			if (picref) {								
+			if (picref) {
+                av_log(NULL, AV_LOG_ERROR, "get frame w:%d h:%d, linesize:%d %d %d\n", 
+                    picref->width, picref->height, picref->linesize[0], picref->linesize[1], picref->linesize[2]);
+                static int index = 0;
+                if (index<10) {
+                    index++;
+                    int ySize = picref->width*picref->height;
+                    char filename[512] = { 0 };
+                    snprintf(filename, 512, "test%d.yuv", index);
+                    FILE *pFile = fopen(filename, "w");
+                    fwrite(picref->data[0], ySize, 1, pFile);
+                    fwrite(picref->data[1], ySize/4, 1, pFile);
+                    fwrite(picref->data[2], ySize/4, 1, pFile);
+                    fclose(pFile);
+                }
 				enc_pkt.data = NULL;
 				enc_pkt.size = 0;
 				av_init_packet(&enc_pkt);
@@ -664,9 +686,10 @@ int videocombine(GlobalContext* video_ctx)
 #if USE_AACBSF  
 					av_bitstream_filter_filter(aacbsfc, out_stream->codec, NULL, &pkt.data, &pkt.size, pkt.data, pkt.size, 0);
 #endif  
+                    av_log(NULL, AV_LOG_INFO, "write frame %d, pts:%lld, dts:%lld, duration:%d\n", 
+                        framecnt, enc_pkt.pts, enc_pkt.dts, enc_pkt.duration);
 
 					ret = av_interleaved_write_frame(ofmt_ctx, &enc_pkt);
-					av_log(NULL, AV_LOG_INFO, "write frame %d\n", framecnt);
 					av_free_packet(&enc_pkt);
 				}
 				av_frame_unref(picref);
@@ -779,7 +802,7 @@ int main(int argc, char **argv)
 	inputfiles[0].filenames = "in1.flv";
 	//inputfiles[0].video_expand = 0;
 	inputfiles[0].video_idx = 0;
-	inputfiles[0].video_effect = VFX_EDGE;
+	inputfiles[0].video_effect = VFX_NULL;
 	inputfiles[0].audio_effect = AFX_NULL;
 	inputfiles[1].filenames = "in2.flv";
 	//inputfiles[1].video_expand = 0;
@@ -794,7 +817,7 @@ int main(int argc, char **argv)
 	inputfiles[3].filenames = "in4.flv";
 	//inputfiles[3].video_expand = 0;
 	inputfiles[3].video_idx = 3;
-	inputfiles[3].video_effect = VFX_NEGATE;
+	inputfiles[3].video_effect = VFX_NULL;
 	inputfiles[3].audio_effect = AFX_NULL;
 
 	global_ctx = (GlobalContext*)av_malloc(sizeof(GlobalContext));
